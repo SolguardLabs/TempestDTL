@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "TempestDTL scenario",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "tempest-dtl"],
+        "filter": {
+          "name": "tempest-dtl",
+          "kind": "bin"
+        }
+      },
+      "args": ["normal"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
