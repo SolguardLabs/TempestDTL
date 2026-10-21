@@ -10,6 +10,7 @@ use crate::codec::pretty_json;
 use crate::error::{TempestError, TempestResult};
 use crate::ids::{AccountId, AssetId, Digest, MarketId};
 use crate::liquidity::{HopRequest, LiquidityBook, Pool, PoolSummary};
+use crate::operations::{OperationsMonitor, OperationsReport};
 use crate::oracle::{MarketMove, MarketObservation, OracleBook};
 use crate::pause::PauseController;
 use crate::risk::{RiskConfig, RiskEngine};
@@ -37,6 +38,7 @@ pub struct ScenarioReport {
     pub state_digest: Digest,
     pub catalog_size: usize,
     pub asset_symbols: Vec<String>,
+    pub operations: OperationsReport,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -77,6 +79,7 @@ pub fn run_scenario(name: &str) -> TempestResult<ScenarioReport> {
         "pause" => scenario_pause(),
         "reactivation" => scenario_reactivation(),
         "ticket" => scenario_ticket(),
+        "queued" => scenario_queued(),
         other => Err(TempestError::RouteRejected(format!(
             "unknown scenario {other}"
         ))),
@@ -215,6 +218,21 @@ fn scenario_ticket() -> TempestResult<ScenarioReport> {
         Some(ticket.summary()),
         Some(receipt_summary(receipt)),
         vec![move_summary(market_move)],
+    )
+}
+
+fn scenario_queued() -> TempestResult<ScenarioReport> {
+    let mut router = default_router()?;
+    let first = router.plan_route(standard_intent(Amount::from_units(8_000), "queue-001")?)?;
+    router.plan_route(standard_intent(Amount::from_units(9_000), "queue-002")?)?;
+    build_report(
+        "queued",
+        &router,
+        true,
+        None,
+        Some(first.summary()),
+        None,
+        Vec::new(),
     )
 }
 
@@ -363,6 +381,7 @@ fn build_report(
         state_digest: router.state_digest(),
         catalog_size: catalog::RISK_PRESETS.len(),
         asset_symbols: router.assets().symbols(),
+        operations: OperationsMonitor.snapshot(router)?,
     })
 }
 
@@ -404,5 +423,21 @@ mod tests {
         assert_eq!(report.mode, "paused");
         assert!(!report.route_admitted);
         assert!(report.rejection.unwrap().contains("paused"));
+    }
+
+    #[test]
+    fn queued_scenario_reports_market_pipeline() {
+        let report = run_scenario("queued").unwrap();
+        assert_eq!(report.operations.prepared_tickets, 2);
+        assert_eq!(report.operations.settled_tickets, 0);
+        assert_eq!(report.operations.pool_count, 2);
+        assert_eq!(report.operations.market_pipeline.len(), 2);
+        assert!(
+            report
+                .operations
+                .market_pipeline
+                .iter()
+                .all(|line| line.prepared_routes == 2)
+        );
     }
 }
