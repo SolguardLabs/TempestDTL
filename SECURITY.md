@@ -1,43 +1,42 @@
-# Seguridad
+# Política de seguridad de TempestDTL
 
-## Modelo
+## Modelo de confianza
 
-TempestDTL asume que los operadores de ruta, pools y oraculos internos son
-componentes autorizados por el protocolo. Las decisiones de admision deben
-mantener consistencia entre precio observado, liquidez disponible, limites de
-desviacion, TTL de tickets y modo operativo del router.
+El router opera sobre catálogos, observaciones y pools suministrados por sus operadores. El núcleo no autentica fuentes externas, no custodia claves y no transmite transacciones por red. Una integración debe validar procedencia de observaciones, permisos de configuración, persistencia y exclusión concurrente de liquidaciones.
 
-## Invariantes Esperadas
+```mermaid
+flowchart TB
+    U[Solicitante] --> I[Validación de ruta e importes]
+    O[Observaciones de mercado] --> G[Guard de mercado]
+    I --> A[Admisión]
+    G --> A
+    A --> T[Ticket y digest]
+    T --> S[Liquidación]
+    S --> L[Libro y eventos]
+    T --> M[Telemetría de pipeline]
+    L --> X[Consumidor JSON]
+    M --> X
+    X -. integración externa .-> P[Persistencia / transporte]
+```
 
-- Ninguna ruta se admite si el router esta en pausa operativa.
-- Los cambios bruscos de precio o profundidad activan protecciones de mercado.
-- La reactivacion exige una ventana de estabilidad antes de admitir nuevas rutas.
-- La liquidacion de tickets debe mantener balances no negativos.
-- Las reservas de pool no pueden quedar por debajo de los minimos configurados.
-- Los digests de auditoria deben ser deterministas para escenarios iguales.
+## Propiedades verificables
 
-## Validaciones
+- Las cantidades usan enteros `i128` no negativos y operaciones comprobadas antes de multiplicar o restar reservas.
+- El motor limita longitud de ruta y evalúa profundidad, puntuación, volatilidad y desviación según el perfil aplicable del catálogo.
+- La pausa bloquea nuevas admisiones; la recuperación exige pasos de slot y estabilidad observada.
+- Las liquidaciones rechazan tickets ya liquidados o expirados y generan recibos, eventos y entradas de diario.
+- `OperationsMonitor` agrega compromisos preparados por `(mercado, activo origen, activo destino)`; no mezcla unidades de activos distintos ni altera el estado.
+- CI verifica formato, compilación, pruebas Rust/Node y Clippy. La integridad de release exige igualdad de commit entre `main`, `production` y tag anotado.
 
-La suite local ejecuta:
+## Reporte de incidencias
 
-- tests unitarios Rust para arithmetic, pools, oracle, pausa y settlement;
-- tests de integracion JavaScript sobre el CLI;
-- clippy con advertencias tratadas como errores;
-- formateo Rust en CI.
+No publique secuencias sensibles ni datos de terceros en incidencias abiertas. Un reporte privado debe adjuntar commit, catálogo/perfiles aplicados, slots y observaciones ordenadas, ruta y ticket, reservas antes/después, recibo, diario y efecto económico cuantificado. Distinga el estado interno de cualquier transferencia de una integración externa. Preserve las salidas originales para permitir una regresión determinista.
 
-## Alcance De Revision
+## Validación local
 
-El alcance recomendado incluye:
+```bash
+bash scripts/ci.sh
+cargo run --quiet --locked -- queued
+```
 
-- cotizacion y admision de rutas;
-- transiciones del controlador de pausa;
-- actualizacion de oraculos y perfiles de riesgo;
-- liquidacion y accounting multi-activo;
-- serializacion JSON de escenarios;
-- catalogo de perfiles y parametros por mercado.
-
-## Reporte Interno
-
-Un reporte debe incluir impacto economico, pasos de reproduccion, patch
-propuesto y pruebas nuevas. No incluir datos sensibles, claves, endpoints
-privados ni artefactos de infraestructura fuera del repositorio.
+Consulte [modelo económico](docs/modelo-economico.md) y [contrato JSON](docs/contrato-json.md) para unidades y semántica de los reportes.
